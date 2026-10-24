@@ -1,0 +1,261 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>iPod Classic Emulator</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+/* Layout: the device is the page. The iPod stands on a dark floor at the left, the setup dock sits beside it
+   and stacks underneath on phones. One deliberate dark theme, like a product shot. */
+:root {
+  --bg: #161618; --fg: #f2f2f4; --muted: #9c9ca4; --line: #303035; --panel: #1f1f23; --accent: #8fb4ff; --warn: #f0a35a;
+  --font-ui: "Source Sans 3", "Myriad Pro", "Segoe UI", system-ui, sans-serif;
+  color-scheme: dark;
+}
+
+[hidden] { display: none !important; }
+body { background: var(--bg); color: var(--fg); font-family: var(--font-ui); font-size: 16px; line-height: 1.5; }
+.stage {
+  display: grid; grid-template-columns: auto minmax(0, 25rem); gap: clamp(2rem, 6vw, 5.5rem);
+  justify-content: center; align-items: start;
+  padding-block: 2rem 3rem;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+@media (max-width: 900px) { .stage { grid-template-columns: minmax(0, 1fr); justify-items: center; } .dock { width: 100%; max-width: 34rem; } }
+
+/* ---------- device: 1em = 1/41.5 of the iPod's width ---------- */
+.device { font-size: min(10.5px, calc((100vw - 34px) / 42.4)); display: flex; flex-direction: column; align-items: center; gap: 1.1em; position: sticky; top: 1.25rem; padding-bottom: 9em; }
+.topedge { width: 41.5em; display: flex; align-items: center; justify-content: space-between; padding: 0 1em; box-sizing: border-box; color: var(--muted); }
+.topedge > * { font: 600 1.15em/1 var(--font-ui); letter-spacing: .12em; text-transform: uppercase; }
+.topedge .left { display: flex; align-items: center; gap: 1.2em; }
+.hold { display: flex; align-items: center; gap: .6em; background: none; border: 0; color: inherit; font: inherit; letter-spacing: inherit; cursor: pointer; padding: .3em; border-radius: .4em; }
+.hold:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.hold .track { width: 3.2em; height: 1.5em; border-radius: 1em; background: linear-gradient(#5d5f63, #8d9095); box-shadow: inset 0 .1em .25em rgba(0,0,0,.5); position: relative; }
+.hold .track::after { content: ""; position: absolute; top: .2em; left: .2em; width: 1.4em; height: 1.1em; border-radius: .7em; background: linear-gradient(#fdfdfd, #c3c6ca); box-shadow: 0 .1em .2em rgba(0,0,0,.4); transition: transform .15s; }
+.hold[aria-pressed="true"] .track { background: linear-gradient(#d9852a, #f0aa55); }
+.hold[aria-pressed="true"] .track::after { transform: translateX(1.4em); }
+.jack { width: 1.2em; height: 1.2em; border-radius: 50%; background: radial-gradient(circle, #0b0b0c 44%, #6f7277 50%, #c9cbce 74%); }
+.speed { font-variant-numeric: tabular-nums; letter-spacing: .04em; }
+.speed.slow { color: var(--warn); }
+
+/* stainless back showing as a thin rim around the polycarbonate front */
+.shell {
+  position: relative; padding: .38em; border-radius: 4.15em;
+  background: linear-gradient(95deg, #77797d 0%, #e9eaec 14%, #a9acb0 33%, #5f6267 50%, #dcdee0 68%, #9a9da2 85%, #eeeff0 100%);
+  box-shadow: 0 0 0 .1em rgba(0,0,0,.55), 0 2.5em 4em -1.5em rgba(0,0,0,.6);
+  -webkit-box-reflect: below .9em linear-gradient(transparent 76%, rgba(255,255,255,.16));
+}
+.face {
+  position: relative; width: 41.5em; height: 69.2em; border-radius: 3.8em;
+  background: linear-gradient(42deg, #d3d3d3 0%, #ececec 45%, #fdfdfd 100%);
+  box-shadow: inset 0 .12em .12em rgba(255,255,255,.95), inset 0 -.25em .5em rgba(0,0,0,.12), inset .25em 0 .5em rgba(0,0,0,.06);
+  user-select: none; -webkit-user-select: none;
+}
+
+/* screen: a thick smoked bezel around a reflective LCD */
+.bezel {
+  position: absolute; left: 6.3em; top: 3.1em; width: 28.9em; height: 23.9em; padding: .8em; border-radius: 1em;
+  background: #2a2a2b;
+  box-shadow: inset 0 0 0 .5em rgba(72,72,72,.9), inset 0 .25em .4em rgba(0,0,0,.6), 0 .12em .08em rgba(255,255,255,.95), 0 -.06em .12em rgba(0,0,0,.25);
+}
+.screen { position: relative; width: 100%; height: 100%; border-radius: .35em; overflow: hidden; display: grid; align-items: center;
+  background: linear-gradient(135deg, #a3a399 0%, #c3c2bb 55%, #d6d5d0 100%); box-shadow: inset 0 .2em .5em rgba(0,0,0,.45); transition: background .35s; }
+.screen.lit { background: linear-gradient(135deg, #a8bfd8 0%, #c6d9ee 50%, #dce9f7 100%); }
+.screen canvas { display: block; width: 100%; aspect-ratio: 160 / 128; }
+.screen::after { content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(160deg, rgba(255,255,255,.28) 0%, rgba(255,255,255,.06) 34%, rgba(255,255,255,0) 35%),
+              repeating-linear-gradient(0deg, rgba(0,0,0,.018) 0 1px, transparent 1px 3px); }
+.nofw { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; padding: 1.5em; color: #20242a; font: 600 1.6em/1.3 var(--font-ui); }
+
+/* click wheel: a ring of four buttons around the rotating scroll wheel and the select button */
+.ring { position: absolute; left: 3.25em; top: 30em; width: 35em; height: 35em; border-radius: 50%; touch-action: none;
+  background: radial-gradient(circle at 38% 28%, #fbfbfb 0%, #ededed 45%, #dedede 100%);
+  box-shadow: inset 0 .25em .35em rgba(255,255,255,.95), inset 0 -.45em .9em rgba(0,0,0,.14), 0 0 0 .18em rgba(0,0,0,.09), -.3em .5em 1em rgba(0,0,0,.12), 0 -.1em .12em rgba(255,255,255,.9); }
+.ring-art { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1; }
+.ring-art .lbl { fill: #8e8e8e; }
+.ring-art .emb { fill: #ffffff; }
+.ring-art text { font: 700 16px var(--font-ui); letter-spacing: .5px; }
+.zone { position: absolute; inset: 0; border: 0; padding: 0; border-radius: 50%; background: transparent; cursor: pointer; -webkit-tap-highlight-color: transparent; transition: background-color .1s; touch-action: none; }
+.zone.down { background-color: rgba(0,0,0,.07); }
+.zone:focus-visible { outline: none; background-color: rgba(70,120,220,.14); }
+.z-menu { clip-path: polygon(50% 50%, 0 0, 100% 0); }
+.z-play { clip-path: polygon(50% 50%, 0 100%, 100% 100%); }
+.z-prev { clip-path: polygon(50% 50%, 0 0, 0 100%); }
+.z-next { clip-path: polygon(50% 50%, 100% 0, 100% 100%); }
+.wheel { position: absolute; left: 50%; top: 50%; width: 27.6em; height: 27.6em; margin: -13.8em 0 0 -13.8em; border-radius: 50%; z-index: 2; cursor: grab; touch-action: none;
+  border: .2em solid #828282; box-sizing: border-box;
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .5 0 0 0 0 .5 0 0 0 0 .5 0 0 0 .09 0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E"),
+    radial-gradient(circle at 42% 30%, #f9f9f9 0%, #ececec 50%, #dadada 100%);
+  box-shadow: inset 0 0 0 .2em rgba(195,190,190,.3), inset 0 .3em .5em rgba(255,255,255,.7), inset 0 -.5em 1em rgba(0,0,0,.1), .4em -.5em 1.8em rgba(176,174,174,.55), 0 -.1em .4em rgba(150,150,150,.6); }
+.wheel:active { cursor: grabbing; }
+.center { position: absolute; left: 50%; top: 50%; width: 10.8em; height: 10.8em; margin: -5.4em 0 0 -5.4em; border-radius: 50%; z-index: 3; padding: 0; cursor: pointer; touch-action: none;
+  border: .2em solid #9e9e9e; box-sizing: border-box;
+  background: radial-gradient(circle at 50% 30%, #fbfbfb 0%, #efefef 55%, #dcdcdc 100%);
+  box-shadow: inset 0 .25em .3em rgba(255,255,255,.9), inset 0 -.4em .7em rgba(0,0,0,.08), 0 .15em .35em rgba(0,0,0,.18); -webkit-tap-highlight-color: transparent; }
+.center.down { background: radial-gradient(circle at 50% 40%, #ececec, #d4d4d4); }
+.center:focus-visible { outline: none; box-shadow: 0 0 0 .35em var(--accent); }
+@media (max-width: 900px) { .device { position: static; } }
+
+/* ---------- dock ---------- */
+.dock { display: grid; gap: 1.4rem; min-width: 0; }
+.eyebrow { margin: 0 0 .35rem; font-size: .78rem; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+.dock h1 { margin: 0; font-size: 2.4rem; line-height: 1.05; letter-spacing: -.02em; text-wrap: balance; }
+.lead { margin: .6rem 0 0; color: var(--muted); max-width: 40ch; }
+.card { display: grid; gap: .8rem; padding: 1.1rem 1.2rem; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); min-width: 0; }
+.card h2 { margin: 0; font-size: 1.05rem; display: flex; align-items: baseline; gap: .6rem; }
+.card h2 .n { font-size: .78rem; font-weight: 700; color: var(--muted); letter-spacing: .1em; }
+.card p { margin: 0; font-size: .92rem; color: var(--muted); }
+.card.disabled { opacity: .55; pointer-events: none; }
+/* another tab runs the iPod: everything but the notice is inert here */
+body.elsewhere .device, body.elsewhere .dock > :not(#elsewhere):not(:first-child) { opacity: .45; pointer-events: none; }
+.card.notice { border-color: color-mix(in srgb, var(--accent) 60%, var(--line)); }
+body.dragging .card { border-style: dashed; border-color: var(--accent); }
+.row { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem; }
+.btn { border: 0; border-radius: 999px; padding: .55rem 1.15rem; background: var(--fg); color: var(--bg); font: 600 .92rem/1.2 var(--font-ui); cursor: pointer; }
+.btn.ghost { background: transparent; color: var(--fg); border: 1px solid var(--line); }
+.btn:disabled { opacity: .45; cursor: default; }
+.btn:focus-visible, .rm:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.fw-ok { display: flex; flex-wrap: wrap; align-items: baseline; gap: .2rem .6rem; }
+.fw-ok b { font-size: 1rem; }
+.check { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; margin-top: .7rem; font-size: .9rem; cursor: pointer; }
+.check span { color: var(--muted); }
+.check input { width: 1rem; height: 1rem; accent-color: var(--accent); }
+.fw-ok span { color: var(--muted); font-size: .88rem; overflow-wrap: anywhere; }
+.songs { list-style: none; margin: 0; padding: 0; display: grid; gap: .1rem; max-height: 16rem; overflow: auto; }
+.songs li { display: flex; align-items: center; gap: .6rem; padding: .35rem 0; border-bottom: 1px solid var(--line); min-width: 0; }
+.songs li:last-child { border-bottom: 0; }
+.songs .meta { flex: 1; min-width: 0; display: grid; }
+.songs .t { font-weight: 600; font-size: .92rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.songs .a { font-size: .8rem; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.rm { border: 0; background: none; color: var(--muted); font: 600 .8rem var(--font-ui); cursor: pointer; padding: .2rem .4rem; border-radius: 6px; }
+.rm:hover { color: var(--fg); }
+.count { font-size: .85rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.status { margin: 0; min-height: 1.5em; font-size: .92rem; }
+.keys h2 { margin: 0 0 .6rem; font-size: .78rem; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+.keys dl { margin: 0; display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: .4rem 1rem; font-size: .9rem; }
+.keys dt { font-weight: 600; }
+.keys dd { margin: 0; color: var(--muted); }
+kbd { font: 600 .76rem/1 var(--font-ui); padding: .15rem .4rem; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 5px; background: var(--panel); color: var(--fg); }
+.fine { margin: 0; font-size: .8rem; color: var(--muted); max-width: 46ch; }
+.erase { display: grid; gap: .6rem; padding-top: 1.1rem; border-top: 1px solid var(--line); }
+.erase p { margin: 0; font-size: .88rem; color: var(--muted); max-width: 46ch; }
+.btn.danger { background: transparent; color: var(--warn); border: 1px solid color-mix(in srgb, var(--warn) 55%, transparent); }
+.btn.danger.solid { background: var(--warn); color: var(--bg); border-color: var(--warn); }
+@media (prefers-reduced-motion: reduce) { .screen, .hold .track::after, .zone { transition: none; } }
+</style>
+
+<main class="stage">
+  <section class="device" aria-label="Emulated iPod">
+    <div class="topedge">
+      <div class="left"><button class="hold" id="hold" type="button" aria-pressed="false"><span class="track"></span>Hold</button><span class="jack" aria-hidden="true"></span></div>
+      <span class="speed" id="speed" aria-live="off"></span>
+    </div>
+    <div class="shell">
+      <div class="face">
+        <div class="bezel">
+          <div class="screen">
+            <canvas id="lcd" width="480" height="384" aria-label="iPod screen"></canvas>
+            <div class="nofw" id="nofw">Load the iPod Software Updater to switch this iPod on</div>
+            <div class="nofw" id="booting" hidden>Starting…</div>
+            <div class="nofw" id="away" hidden>Running in another tab</div>
+          </div>
+        </div>
+        <div class="ring">
+          <button class="zone z-menu" data-btn="menu" type="button" aria-label="Menu"></button>
+          <button class="zone z-prev" data-btn="prev" type="button" aria-label="Previous"></button>
+          <button class="zone z-next" data-btn="next" type="button" aria-label="Next"></button>
+          <button class="zone z-play" data-btn="play" type="button" aria-label="Play or pause"></button>
+          <svg class="ring-art" viewBox="0 0 350 350" aria-hidden="true">
+            <defs><path id="arc" d="M 18 175 A 157 157 0 0 1 332 175"/></defs>
+            <g stroke-linecap="round">
+              <g stroke="rgba(0,0,0,.2)" stroke-width="1.6">
+                <line x1="78.8" y1="78.8" x2="53.6" y2="53.6"/><line x1="271.2" y1="78.8" x2="296.4" y2="53.6"/>
+                <line x1="78.8" y1="271.2" x2="53.6" y2="296.4"/><line x1="271.2" y1="271.2" x2="296.4" y2="296.4"/>
+              </g>
+              <g stroke="rgba(255,255,255,.95)" stroke-width="1.2" transform="translate(.9 1.1)">
+                <line x1="78.8" y1="78.8" x2="53.6" y2="53.6"/><line x1="271.2" y1="78.8" x2="296.4" y2="53.6"/>
+                <line x1="78.8" y1="271.2" x2="53.6" y2="296.4"/><line x1="271.2" y1="271.2" x2="296.4" y2="296.4"/>
+              </g>
+            </g>
+            <g transform="translate(0 1)"><text class="emb" text-anchor="middle" dy="5"><textPath href="#arc" startOffset="50%">menu</textPath></text></g>
+            <text class="lbl" text-anchor="middle" dy="5"><textPath href="#arc" startOffset="50%">menu</textPath></text>
+            <g transform="translate(9 169)"><g class="emb" transform="translate(0 1)"><rect width="2" height="11"/><path d="M10 0v11L3 5.5zM18 0v11l-7-5.5z"/></g><g class="lbl"><rect width="2" height="11"/><path d="M10 0v11L3 5.5zM18 0v11l-7-5.5z"/></g></g>
+            <g transform="translate(323 169)"><g class="emb" transform="translate(0 1)"><path d="M0 0v11l7-5.5zM8 0v11l7-5.5z"/><rect x="16" width="2" height="11"/></g><g class="lbl"><path d="M0 0v11l7-5.5zM8 0v11l7-5.5z"/><rect x="16" width="2" height="11"/></g></g>
+            <g transform="translate(166 324)"><g class="emb" transform="translate(0 1)"><path d="M0 0v11l7-5.5z"/><rect x="10" width="2.6" height="11"/><rect x="14.6" width="2.6" height="11"/></g><g class="lbl"><path d="M0 0v11l7-5.5z"/><rect x="10" width="2.6" height="11"/><rect x="14.6" width="2.6" height="11"/></g></g>
+          </svg>
+          <div class="wheel" id="wheel"><button class="center" data-btn="select" type="button" aria-label="Select"></button></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <aside class="dock">
+    <div>
+      <p class="eyebrow">First generation · PortalPlayer PP5002 · 2001</p>
+      <h1>iPod Classic Emulator</h1>
+      <p class="lead">Runs Apple's real iPod Software on an emulated ARM7 chip, hard disk and LCD. You supply the software; your music goes onto the emulated disk.</p>
+    </div>
+
+    <section class="card notice" id="elsewhere" hidden>
+      <h2>Open in another tab</h2>
+      <p>This iPod is running in another tab. Only one tab runs it at a time, so the two cannot overwrite each other's saved iPod.</p>
+      <div class="row"><button class="btn" id="take-over" type="button">Use it here</button></div>
+    </section>
+
+    <section class="card" id="fw">
+      <h2><span class="n">1</span>iPod Software</h2>
+      <div id="fw-empty">
+        <p>Choose an iPod Software 1.x updater: the Mac download (.dmg or .dmg.bin), the Windows installer (setup.exe), or the Firmware file inside either. It is read in this browser and kept here; nothing is uploaded.</p>
+        <div class="row" style="margin-top:.8rem"><button class="btn" id="fw-choose" type="button">Choose updater…</button></div>
+      </div>
+      <div id="fw-loaded" hidden>
+        <div class="fw-ok"><b id="fw-name"></b><span id="fw-src"></span></div>
+        <div class="row" style="margin-top:.6rem"><button class="btn ghost" id="fw-replace" type="button">Replace</button><button class="btn ghost" id="reset" type="button">Restart iPod</button><button class="btn ghost" id="mute" type="button" aria-pressed="false">Mute</button></div>
+        <label class="check"><input type="checkbox" id="light" checked> Backlight always on <span>(off: follow the iPod's own setting)</span></label>
+      </div>
+      <input type="file" id="fw-pick" hidden>
+    </section>
+
+    <section class="card disabled" id="music">
+      <h2><span class="n">2</span>Music</h2>
+      <p>Add songs, then sync. 44.1 kHz MP3s and WAVs go on as they are; everything else (other sample rates, AAC, FLAC, OGG, AIFF) is converted to 44.1 kHz, 192 kbps MP3. The emulated iPod decodes them itself.</p>
+      <div class="row"><button class="btn ghost" id="add-songs" type="button">Add songs…</button><button class="btn" id="sync" type="button" disabled>Sync to iPod</button><span class="count" id="song-count"></span></div>
+      <ul class="songs" id="songs"></ul>
+      <input type="file" id="song-pick" multiple hidden accept="audio/*,.mp3,.m4a,.aac,.wav,.aif,.aiff,.ogg,.oga,.opus,.flac">
+    </section>
+
+    <p class="status" id="status" aria-live="polite"></p>
+
+    <div class="keys">
+      <h2>Controls</h2>
+      <dl>
+        <dt>Scroll</dt><dd>Drag around the wheel, use the mouse wheel, or <kbd>↑</kbd> <kbd>↓</kbd></dd>
+        <dt>Select</dt><dd>Center button or <kbd>Enter</kbd></dd>
+        <dt>Menu</dt><dd>Top of the ring or <kbd>Esc</kbd>. Hold it for the backlight.</dd>
+        <dt>Play / Pause</dt><dd>Bottom of the ring or <kbd>Space</kbd></dd>
+        <dt>Skip</dt><dd>Left and right of the ring or <kbd>←</kbd> <kbd>→</kbd></dd>
+        <dt>Hold</dt><dd>The switch on top, or <kbd>H</kbd>. Locks the buttons and the wheel.</dd>
+        <dt>Reset</dt><dd>Hold Menu and Play together for 5 seconds (<kbd>Esc</kbd> + <kbd>Space</kbd>), or Restart iPod above. Songs and settings stay.</dd>
+      </dl>
+    </div>
+    <section class="erase" aria-label="Erase everything">
+      <div class="row"><button class="btn danger" id="erase" type="button">Erase everything</button></div>
+      <div id="erase-confirm" hidden>
+        <p>This removes the iPod Software, all songs, the iPod's settings and its saved state from this browser. The page starts over as if opened for the first time.</p>
+        <div class="row" style="margin-top:.6rem"><button class="btn danger solid" id="erase-yes" type="button">Erase</button><button class="btn ghost" id="erase-no" type="button">Cancel</button></div>
+      </div>
+    </section>
+
+    <p class="fine">An independent emulator, not affiliated with or endorsed by Apple. The iPod Software is Apple's; load your own copy.</p>
+  </aside>
+</main>
+
+<script src="emu/hfsplus.js"></script>
+<script src="emu/itunesdb.js"></script>
+<script src="emu/disk.js"></script>
+<script src="emu/inflate.js"></script>
+<script src="emu/cab.js"></script>
+<script src="emu/updater.js"></script>
+<script src="web/app.js"></script>

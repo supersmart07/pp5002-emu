@@ -1,0 +1,31 @@
+# Apple's iPod Software is not ours to distribute: users load their own updater in the page.
+fw/
+*.dmg
+*.dmg.bin
+*.bin
+*.img
+*.exe
+Firmware
+Firmware-*
+
+# Music and audio (personal files and test recordings)
+*.mp3
+*.m4a
+*.aac
+*.wav
+*.aif
+*.aiff
+*.flac
+*.ogg
+*.raw
+
+# Scratch work: extracted firmware, disk images, captures, logs
+work/
+*.log
+
+# Early UI mock-up, superseded by index.html
+ipod.html
+
+# Local editor and tool settings
+.DS_Store
+.claude/
