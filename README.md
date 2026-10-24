@@ -13,7 +13,6 @@ Open the page (on GitHub Pages, or locally as below), then:
 
 1. **iPod Software**: choose an updater for the 1st/2nd-generation iPod. The page accepts the Mac download
    (`.dmg` or MacBinary `.dmg.bin`), the Windows installer (`setup.exe`), or the `Firmware` file from inside either.
-   3rd-generation (2.x) and iPod mini software is recognized and declined.
 2. **Music**: add songs and press Sync. 44.1 kHz MP3s and WAVs go on as they are; other formats are converted in
    the browser to 44.1 kHz, 192 kbps MP3.
 3. Drive it with the wheel and buttons, or the keyboard: arrow keys scroll, Enter selects, Esc is Menu, Space is
