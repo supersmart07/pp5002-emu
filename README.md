@@ -7,6 +7,8 @@ MP3 decoder are the real thing; your songs go onto an emulated disk and play thr
 **No Apple software is included.** You load your own copy of the iPod Software Updater in the page; it is read in
 your browser and stored there. Nothing is uploaded. Not affiliated with Apple.
 
+The whole thing was vibe coded inspired by Apple's 404 easter egg.
+
 ## Use it
 
 Open the page (on GitHub Pages, or locally as below), then:
