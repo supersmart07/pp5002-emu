@@ -52,6 +52,8 @@ body { background: var(--bg); color: var(--fg); font-family: var(--font-ui); fon
   box-shadow: inset 0 .12em .12em rgba(255,255,255,.95), inset 0 -.25em .5em rgba(0,0,0,.12), inset .25em 0 .5em rgba(0,0,0,.06);
   user-select: none; -webkit-user-select: none;
 }
+/* iPhone: a slow drag on the wheel counts as a long press, which would select text and open the callout menu */
+.device { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 
 /* screen: a thick smoked bezel around a reflective LCD */
 .bezel {

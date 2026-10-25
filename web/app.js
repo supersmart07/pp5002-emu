@@ -75,11 +75,20 @@
 
   // ---------- audio: AudioWorklet fed directly by the emulator thread, ScriptProcessor as a fallback ----------
   const audio = { ctx: null, node: null, ring: null, kind: '', muted: false, received: 0 };
+  // Safari (and every iOS browser, all WebKit): it runs audio at the device rate (48 kHz on iPhones) and has had
+  // bugs with other rates, so it gets the device rate and the ring resamples; other browsers get 44.1 kHz directly
+  const ua = navigator.userAgent || '';
+  const webkitOnly = /AppleWebKit/.test(ua) && !/Chrome\/|Chromium\//.test(ua);
+  const iOS = /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+  let silentKeeper = null;
   function startAudio() {
-    if (audio.ctx) { if (audio.ctx.state === 'suspended') audio.ctx.resume().catch(() => {}); return; }
+    // iOS pauses audio as 'interrupted' (phone locked, call, another app), not only 'suspended'
+    if (audio.ctx) { if (audio.ctx.state !== 'running') audio.ctx.resume().catch(() => {}); keepPlaybackSession(); return; }
     const AC = window.AudioContext || window.webkitAudioContext;
     if (!AC) return;
-    try { audio.ctx = new AC({ sampleRate: 44100 }); } catch (e) { try { audio.ctx = new AC(); } catch (e2) { return; } }
+    keepPlaybackSession();
+    try { audio.ctx = webkitOnly ? new AC() : new AC({ sampleRate: 44100 }); }
+    catch (e) { try { audio.ctx = new AC(); } catch (e2) { return; } }
     (async () => {
       try {
         if (!audio.ctx.audioWorklet || typeof AudioWorkletNode === 'undefined') throw new Error('no worklet');
@@ -97,6 +106,21 @@
       setMute(audio.muted);
       connectAudioPort();
     })().catch(() => {});
+  }
+  // iPhones mute web audio with the ring/silent switch unless the page plays like a music app. Newer Safari has an
+  // API for that; older iOS switches to the playback session only while an <audio> element plays, so a silent
+  // looping one is kept running there.
+  function keepPlaybackSession() {
+    try { if (navigator.audioSession) { navigator.audioSession.type = 'playback'; return; } } catch (e) {}
+    if (!iOS || silentKeeper) return;
+    const n = 4410, b = new Uint8Array(44 + n * 2), dv = new DataView(b.buffer);   // 0.1 s of silence, 16-bit mono WAV
+    [...'RIFF'].forEach((c, i) => b[i] = c.charCodeAt(0)); dv.setUint32(4, 36 + n * 2, true);
+    [...'WAVEfmt '].forEach((c, i) => b[8 + i] = c.charCodeAt(0)); dv.setUint32(16, 16, true); dv.setUint16(20, 1, true);
+    dv.setUint16(22, 1, true); dv.setUint32(24, 44100, true); dv.setUint32(28, 88200, true); dv.setUint16(32, 2, true); dv.setUint16(34, 16, true);
+    [...'data'].forEach((c, i) => b[36 + i] = c.charCodeAt(0)); dv.setUint32(40, n * 2, true);
+    silentKeeper = new Audio(URL.createObjectURL(new Blob([b], { type: 'audio/wav' })));
+    silentKeeper.loop = true; silentKeeper.setAttribute('playsinline', '');
+    silentKeeper.play().catch(() => { silentKeeper = null; });   // retried on the next tap if refused
   }
   // give the worklet a direct line from the emulator worker so audio never waits on the page
   function connectAudioPort() {
@@ -117,9 +141,10 @@
   }
   window.ipodDebug = { audio };
   // browsers allow sound only after an interaction, so the first click or key press anywhere turns it on
-  const unlockAudio = () => { startAudio(); if (/Click anywhere to hear it\.$/.test(statusEl.textContent)) status(statusEl.textContent.replace(' Click anywhere to hear it.', '')); };
-  document.addEventListener('pointerdown', unlockAudio, true);
-  document.addEventListener('keydown', unlockAudio, true);
+  const unlockAudio = () => { startAudio(); if (/(Click|Tap) anywhere to hear it\.$/.test(statusEl.textContent)) status(statusEl.textContent.replace(/ (Click|Tap) anywhere to hear it\./, '')); };
+  // a tap only grants permission to start sound once it ends (pointerup / touchend; iOS is strict about this), so
+  // those are listened to as well as pointerdown
+  for (const ev of ['pointerdown', 'pointerup', 'touchend', 'click', 'keydown']) document.addEventListener(ev, unlockAudio, true);
 
   // ---------- emulator engine: a Web Worker, or the page itself if workers are unavailable ----------
   let engine = null, harvestWait = null, debugWait = null, elsewhere = false;
@@ -142,7 +167,7 @@
       running = true;
       if (m.restored) {
         const silent = m.playing && !(audio.ctx && audio.ctx.state === 'running');
-        status(`Picked up where you left off (iPod Software ${firmware.version}).` + (silent ? ' Click anywhere to hear it.' : ''));
+        status(`Picked up where you left off (iPod Software ${firmware.version}).` + (silent ? (iOS ? ' Tap anywhere to hear it.' : ' Click anywhere to hear it.') : ''));
       }
     }
     else if (m.type === 'restoreFailed') { kvSet('snapshot', null); boot(null); }
@@ -278,6 +303,11 @@
     b.addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === ' ') && !e.repeat) { e.preventDefault(); e.stopPropagation(); press(name, true); } });
     b.addEventListener('keyup', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); press(name, false); } });
   });
+
+  // iOS starts its text-selection gesture from a held touch even where nothing is selectable, so the click wheel takes
+  // its touches itself (its buttons and wheel use pointer events, and sound unlocks on touchend, which still fires);
+  // the rest of the iPod still scrolls the page
+  $('.ring').addEventListener('touchstart', e => e.preventDefault(), { passive: false });
 
   // scroll wheel: one quadrature edge per 4 degrees of rotation
   const wheel = $('#wheel');
@@ -672,11 +702,35 @@
     $('#take-over').disabled = false;
     comeBack();
   });
+  // ?debug in the page address shows the sound engine's state under the status line (for checking phones)
+  if (/[?&#]debug\b/.test(location.href)) {
+    const line = document.createElement('p'); line.className = 'status'; line.style.opacity = '.7'; statusEl.after(line);
+    let out = null;   // what the sound processor reports: seconds played, buffered, underruns
+    setInterval(() => {
+      if (audio.kind === 'worklet') { audio.node.port.onmessage = e => { if (e.data.type === 'stats') out = e.data; }; audio.node.port.postMessage({ type: 'stats' }); }
+      else if (audio.ring) out = { played: audio.ring.r / 44100, fill: audio.ring.fill(), underruns: audio.ring.underruns };
+      const c = audio.ctx, s = navigator.audioSession;
+      line.textContent = `audio: ${audio.kind || 'not started'}, ${c ? c.state + ', ' + c.sampleRate + ' Hz' : 'no context'}` +
+        `, session ${s ? s.type : (silentKeeper ? 'audio element' : 'default')}, muted ${audio.muted}` +
+        (out ? `, played ${out.played.toFixed(1)} s, buffered ${Math.round(out.fill / 44.1)} ms, underruns ${out.underruns}` : '') +
+        `, core ${window.ipodDebug.blocks == null ? 'interpreter' : 'blocks ' + window.ipodDebug.blocks}`;
+    }, 1000);
+  }
+  // test hooks, local only (for devices without a file picker at hand): ?fw=<path on this server> loads that updater,
+  // ?song=<path> adds that song and syncs it
+  const local = /^(localhost|127\.0\.0\.1)$/.test(location.hostname), qs = new URLSearchParams(location.search);
+  const fwParam = local && qs.get('fw'), songParam = local && qs.get('song');
   (async () => {
-    if (!canLock || await takeLock({ ifAvailable: true })) loadAndBoot();
-    else {   // still show what is stored here, behind the notice
+    if (canLock && !(await takeLock({ ifAvailable: true }))) {   // another tab runs it: show what is stored, behind the notice
       try { const fw = await kvGet('firmware'); if (fw && fw.osos) firmware = { firmware: new Uint8Array(fw.firmware), osos: new Uint8Array(fw.osos), version: fw.version, source: fw.source }; songs = (await songsAll()) || []; } catch (e) {}
       renderFirmware(); renderSongs(); goElsewhere();
+      return;
+    }
+    if (fwParam && !(await kvGet('firmware').catch(() => null))) await loadUpdater(new File([await (await fetch(fwParam)).blob()], fwParam.split('/').pop()));
+    else await loadAndBoot();
+    if (songParam && firmware && !songs.length) {
+      await addFiles([new File([await (await fetch(songParam)).blob()], songParam.split('/').pop())]);
+      $('#sync').click();
     }
   })();
   addEventListener('pagehide', () => { if (!elsewhere) { saveSnapshot(); saveDevice(); } });

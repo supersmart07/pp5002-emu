@@ -63,6 +63,11 @@ As observed with iPod Software 1.2 unless noted.
 - **One tab at a time.** All tabs share one saved iPod in IndexedDB, so the running tab holds a Web Lock. Other tabs
   show a notice; "Use it here" asks the running tab over a BroadcastChannel to save and stop, and takes the lock
   from a tab that does not answer within 4 seconds.
+- **iPhone sound.** iOS mutes web audio with the ring/silent switch unless the page plays like a music app, so the
+  page sets `navigator.audioSession.type = 'playback'` (older iOS: a silent looping `<audio>` element). Sound starts
+  on a completed tap (`pointerup`/`touchend`), resumes from iOS's `interrupted` state after a lock or call, and runs
+  at the device rate (48 kHz) with the output ring resampling. Opening the page with `?debug` shows the sound
+  engine's state, seconds played and underruns under the status line.
 - **Wheel timing.** Wheel edges are paced by the 32-bit microsecond clock. An idle wheel restarts from the current
   time, because a stale deadline more than 2³¹ µs away (36 minutes of uptime, or a restored snapshot) would
   otherwise block all wheel input.
